@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pfizer Vaccine Appointment Finder AZ</title>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"
+        integrity="sha512-qTXRIMyZIFb8iQcfjXWCO8+M5Tbc38Qi5WzdPOYZHIlZpzBHG3L3by84BBBOiRGiEb7KKtAOAs5qYdUiZiQNNQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<script>
+  (async () => {
+    const fetchAllPfizerDepartmentsAndRegNo = async (passportNumber, pin) => {
+      const fdPerson = new FormData()
+      fdPerson.append('Pin[Pin]', pin)
+      fdPerson.append('Pin[PassportNumber]', passportNumber)
+      const personRes = await window.axios.post('https://randevu.its.gov.az/CovidVaccine/FindPersonWithPin', fdPerson)
+      const pfizerDeps = personRes.data.Items.DepartList.filter(i => i.Name.includes('Pfizer'))
+      const regNo = personRes.data.Regno
+      return {
+        pfizerDeps,
+        regNo,
+        allDeps: personRes.data.Items.DepartList
+      }
+    }
+
+    // getting all pfizer departments and the registration number (regno)
+    const { pfizerDeps, regNo, allDeps } = await fetchAllPfizerDepartmentsAndRegNo('AZE########', '#######')
+    // getting all active days per each department
+    for (const pd of pfizerDeps) {
+      const fdActiveDays = new FormData()
+      fdActiveDays.append('dateRequest[DepartId]', pd.Id)
+      const activeDays = await window.axios.post('https://randevu.its.gov.az/CovidVaccine/GetActiveDaysByDepartId', fdActiveDays)
+      const daysToStart = activeDays.data.Items.SinceStartDayInterval,
+        daysToEnd = activeDays.data.Items.StartEndDayInterval,
+        datesToSkip = activeDays.data.Items.UnAppointmentDays
+      for (let i = daysToStart; i < daysToEnd - daysToStart; i++) {
+        const shownDate = window.moment().add(i, 'days'),
+          actualDate = window.moment().add(i, 'days').subtract(1, 'days')
+        if (datesToSkip.findIndex(d => window.moment(d.UnAppointmentDate).format('DD-MM-YYYY') === shownDate.format('DD-MM-YYYY')) === -1) {
+          const fdAppointmentHours = new FormData()
+          fdAppointmentHours.append('hoursRequest[DepartId]', pd.Id)
+          fdAppointmentHours.append('hoursRequest[Date]', `${actualDate.format('ddd, D MMM YYYY')} 20:00:00 GMT`)
+          const appointmentHours = await window.axios.post('https://randevu.its.gov.az/CovidVaccine/GetAppointmentHours', fdAppointmentHours)
+          if (appointmentHours.data.Items) {
+            console.log('---')
+            console.log(pd)
+            console.log(shownDate.format('DD-MM-YYYY ddd'))
+            console.log(appointmentHours.data.Items)
+          }
+        }
+      }
+    }
+  })()
+</script>
+</body>
+</html>
